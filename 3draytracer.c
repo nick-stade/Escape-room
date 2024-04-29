@@ -2,7 +2,7 @@
 #include "M3d_matrix_tools.c"
 #include "xwd_tools_03.c"
 
-
+double screenz = 600;
 double obmat[100][4][4] ;
 double obinv[100][4][4] ;
 double color[100][3] ;
@@ -171,8 +171,17 @@ void normal_usphere( int onum,double result[],double obpt[]){
 }
 
 void normal_plane( int onum,double result[],double obpt[]){
+  // result[0] = 0; result[1] = 0; reslt[2] = 1;
+  //   normal[0] = (normalOb[0] * obinv[closestObj][0][0]) + (normalOb[1] * obinv[closestObj][1][0]) + (normalOb[2] * obinv[closestObj][2][0]); // normal vector X 
+  //   normal[1] = (normalOb[0] * obinv[closestObj][0][1]) + (normalOb[1] * obinv[closestObj][1][1]) + (normalOb[2] * obinv[closestObj][2][1]); // normal vector Y 
+  //   normal[2] = (normalOb[0] * obinv[closestObj][0][2]) + (normalOb[1] * obinv[closestObj][1][2]) + (normalOb[2] * obinv[closestObj][2][2]); // normal vector Z 
+  //   normalLen = sqrt(normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]);
+  //   normal[0] = (normal[0] / normalLen); // Create vector with length 1
+  //   normal[1] = (normal[1] / normalLen); // Create vector with length 1
+  //   normal[2] = (normal[2] / normalLen); // Create vector with length 1
+
   double dzdx,dzdy,dzdz,dzdp[3];
-  dzdx = 1; dzdy = 1; dzdz = 0;
+  dzdx = 0; dzdy = 0; dzdz = 1;
   dzdp[0] = obinv[onum][0][0]*dzdx + obinv[onum][1][0]*dzdy + obinv[onum][2][0]*dzdz;
   dzdp[1] = obinv[onum][0][1]*dzdx + obinv[onum][1][1]*dzdy + obinv[onum][2][1]*dzdz;
   dzdp[2] = obinv[onum][0][2]*dzdx + obinv[onum][1][2]*dzdy + obinv[onum][2][2]*dzdz;
@@ -180,6 +189,10 @@ void normal_plane( int onum,double result[],double obpt[]){
   result[0] = dzdp[0];
   result[1] = dzdp[1];
   result[2] = dzdp[2];
+  // result[0] = 0;
+  // result[1] = 0;
+  // result[2] = 1;
+  // M3d_mat_mult_pt(result,obmat[onum],result);
 }
 
 void normal_hyperboloid( int onum,double result[],double obpt[]){
@@ -215,9 +228,11 @@ double intersect_usphere(double S[3], double T[3], double pt[3]){
   c = pow(S[0],2) + pow(S[1],2) + pow(S[2],2) - 1;
   double solns[2];
   int num_solns = quadratic(a,b,c,solns);
-  if(num_solns == 0){
+  if(num_solns == 0 || 
+    (num_solns == 1 && solns[0] < 0) ||
+    (num_solns == 2 && solns[0] < 0 && solns[1] < 0)){
     return -1;
-  }else if(num_solns == 1 || (num_solns == 2 && solns[0] < solns[1]) ){
+  }else if(num_solns == 1 || (num_solns == 2 && solns[0] < solns[1]) || solns[1] < 0){
     pt[0] = S[0] + solns[0]*dx;
     pt[1] = S[1] + solns[0]*dy;
     pt[2] = S[2] + solns[0]*dz;
@@ -239,7 +254,7 @@ double intersect_plane(double S[], double T[], double res[]){
   t = -S[2]/dz;
   x = S[0] + t*dx;
   y = S[1] + t*dy;
-  if(x > 1 || x < -1 || y > 1 || y < -1){return -1;}
+  if(x > 1 || x < -1 || y > 1 || y < -1 || t < 0){return -1;}
   res[0] = x;
   res[1] = y;
   res[2] = 0;
@@ -256,6 +271,18 @@ double intersect_hyperboloid(double S[],double T[],double res[]){
   c = pow(S[0],2) - pow(S[1],2) + pow(S[2],2) - 1;
   double solns[2];
   int num_solns = quadratic(a,b,c,solns);
+  if(num_solns == 2 && (solns[0] < 0 || solns[1] < 0)){
+    if(solns[0] < 0 && solns[1] < 0){
+      num_solns = 0;
+    }else{
+      if(solns[1] < 0){
+        num_solns--;
+      }else{
+        solns[0] = solns[1];
+        num_solns--;
+      }
+    }
+  }
   if(num_solns == 0){
     return -1;
   }else if(num_solns == 1){
@@ -344,8 +371,8 @@ void map_object(double pt[3], int onum, double argb[3]){
   e = get_xwd_map_dimensions(obid[onum], d) ;
   if (e == -1) { printf("failure %d\n",onum) ;  exit(0) ; }
   width = d[0] - 1 ; height = d[1] - 1;
-  ud = (int)(uv[0]*width);
-  vd = (int)(uv[1]*height);
+  ud = (int)(uv[1]*width);
+  vd = (int)(uv[0]*height);
   e = get_xwd_map_color(obid[onum], ud,vd,argb) ; // returns -1 on error, 1 if ok
   if (e == -1) { printf("failure %d\n",onum) ;  exit(0) ; }
 }
@@ -381,15 +408,50 @@ void ray_recurse(double Rsource[3], double Rtip[3], double argb[3]){
   ray(Rsource,Rtip,argb);
 }
 
+void draw(){
+  double Rsource[3];
+  double Rtip[3];
+  double argb[3] ;
+  Rsource[0] =  0 ;  Rsource[1] =  0 ;  Rsource[2] = 0 ;    
+    Rtip[2] = screenz; // (400/tan30)
+    for(Rtip[0] = -400; Rtip[0] < 400; Rtip[0]++){
+    	for(Rtip[1] = -400; Rtip[1] < 400; Rtip[1]++){
+    		ray_recurse(Rsource, Rtip, argb);
+        G_rgb(argb[0],argb[1],argb[2]);
+        G_point(Rtip[0]+400,Rtip[1]+400);
+    	}
+    }
+}
+
+void draw_txt(int frame){
+  FILE *file;
+  char fname[100];
+  sprintf(fname,"images/%d.txt",frame);
+  file = fopen(fname,"w");
+  double Rsource[3];
+  double Rtip[3];
+  double argb[3] ;
+  Rsource[0] =  0 ;  Rsource[1] =  0 ;  Rsource[2] = 0 ;    
+  Rtip[2] = screenz; // (400/tan30)
+  for(Rtip[0] = -400; Rtip[0] < 400; Rtip[0]++){
+    for(Rtip[1] = -400; Rtip[1] < 400; Rtip[1]++){
+      //printf("%lf %lf\n",Rtip[0],Rtip[1]);//+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+      ray_recurse(Rsource, Rtip, argb);
+      fprintf(file,"%lf%lf%lf",argb[0],argb[1],argb[2]);
+      //G_rgb(argb[0],argb[1],argb[2]);
+      //G_point(Rtip[0]+400,Rtip[1]+400);
+    }
+  }
+  fclose(file);
+}
+
 int test01()
 {
   double vm[4][4], vi[4][4];
   double Tvlist[100];
   int Tn, Ttypelist[100];
   double m[4][4], mi[4][4];
-  double Rsource[3];
-  double Rtip[3];
-  double argb[3] ;
+
 
     //////////////////////////////////////////////////////////////////////
     M3d_make_identity(vm) ;    M3d_make_identity(vi) ; // OVERRIDE for 2d
@@ -474,16 +536,7 @@ int test01()
     light_in_eye_space[1] =  10 ;
     light_in_eye_space[2] =   0 ;
     
-    Rsource[0] =  0 ;  Rsource[1] =  0 ;  Rsource[2] = 0 ;    
-    Rtip[2] = 692.8; // (400/tan30)
-
-    for(Rtip[0] = -400; Rtip[0] < 400; Rtip[0]++){
-    	for(Rtip[1] = -400; Rtip[1] < 400; Rtip[1]++){
-    		ray_recurse(Rsource, Rtip, argb);
-        G_rgb(argb[0],argb[1],argb[2]);
-        G_point(Rtip[0]+400,Rtip[1]+400);
-    	}
-    }
+    draw();
 
     G_rgb(1,1,1) ; G_draw_string("'q' to quit", 50,50) ;
     while (G_wait_key() != 'q') ;
@@ -498,10 +551,3 @@ int test01()
 //////////////////////////////////////////////////////////////////////////////
 
 
-
-
-int main()
-{
-  G_init_graphics(800,800);
-  test01() ;
-}
